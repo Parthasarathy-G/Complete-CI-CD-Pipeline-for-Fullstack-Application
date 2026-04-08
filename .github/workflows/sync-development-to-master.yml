@@ -2,35 +2,65 @@ name: Sync Development To Master
 
 on:
     schedule:
-        - cron: "10 6 * * *"
+        - cron: "15 6 * * *"
     workflow_dispatch:
 
 permissions:
-    contents: write
+    contents: read
+    pull-requests: write
 
 jobs:
-    sync-branches:
+    open-sync-pr:
         runs-on: ubuntu-latest
 
         steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+            - name: Create or reuse sync pull request
+              uses: actions/github-script@v7
               with:
-                fetch-depth: 0
+                github-token: ${{ secrets.GITHUB_TOKEN }}
+                script: |
+                  const owner = context.repo.owner;
+                  const repo = context.repo.repo;
+                  const base = "master";
+                  const headBranch = "development";
+                  const head = `${owner}:${headBranch}`;
 
-            - name: Configure Git
-              run: |
-                git config user.name "github-actions[bot]"
-                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  const comparison = await github.rest.repos.compareCommitsWithBasehead({
+                    owner,
+                    repo,
+                    basehead: `${base}...${headBranch}`,
+                  });
 
-            - name: Fetch all branches
-              run: git fetch origin master development
+                  if (comparison.data.ahead_by === 0) {
+                    core.info("Development is already in sync with master. No PR created.");
+                    return;
+                  }
 
-            - name: Merge development into master
-              run: |
-                git checkout master
-                git pull origin master
-                git merge --no-ff --no-edit origin/development
+                  const existing = await github.rest.pulls.list({
+                    owner,
+                    repo,
+                    state: "open",
+                    base,
+                    head,
+                    per_page: 1,
+                  });
 
-            - name: Push updated master branch
-              run: git push origin master
+                  if (existing.data.length > 0) {
+                    core.info(`Open sync PR already exists: #${existing.data[0].number}`);
+                    return;
+                  }
+
+                  const pullRequest = await github.rest.pulls.create({
+                    owner,
+                    repo,
+                    title: "chore(sync): merge development into master",
+                    head: headBranch,
+                    base,
+                    body: [
+                      "Automated daily sync PR from `development` to `master`.",
+                      "",
+                      "Schedule: 11:00 AM IST every day.",
+                    ].join("\n"),
+                  });
+
+                  core.info(`Created sync PR #${pullRequest.data.number}`);
