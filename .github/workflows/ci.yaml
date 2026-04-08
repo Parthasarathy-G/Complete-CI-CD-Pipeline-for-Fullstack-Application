@@ -1,0 +1,37 @@
+name: Pipeline check
+
+on:
+    push:
+     branches:
+        - master
+    
+jobs:
+    basic-check:
+        runs-on: ubuntu:lastest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
+
+            - name: Setup node js
+              uses: actions/setup-node@v4
+              with:
+                node-version: 18
+                cache: npm
+            
+            - name: Changing directory
+              run: cd frontend/
+
+            - name: Installing npm
+              run: npm install
+
+            - name: Testing the code
+              run: npm run test
+            
+            - name: Building the app
+              run: npm run build
+
+            
+
+            
+
