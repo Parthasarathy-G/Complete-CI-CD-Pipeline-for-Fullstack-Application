@@ -1,0 +1,36 @@
+name: Sync Development To Master
+
+on:
+    schedule:
+        - cron: "30 5 * * *"
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+jobs:
+    sync-branches:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                fetch-depth: 0
+
+            - name: Configure Git
+              run: |
+                git config user.name "github-actions[bot]"
+                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            - name: Fetch all branches
+              run: git fetch origin master development
+
+            - name: Merge development into master
+              run: |
+                git checkout master
+                git pull origin master
+                git merge --no-ff --no-edit origin/development
+
+            - name: Push updated master branch
+              run: git push origin master
