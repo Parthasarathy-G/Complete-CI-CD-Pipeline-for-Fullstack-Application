@@ -2,7 +2,7 @@ name: Sync Development To Master
 
 on:
     schedule:
-        - cron: "30 5 * * *"
+        - cron: "5 6 * * *"
     workflow_dispatch:
 
 permissions:
