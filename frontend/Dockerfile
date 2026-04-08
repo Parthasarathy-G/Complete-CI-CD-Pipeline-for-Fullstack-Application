@@ -1,35 +1,44 @@
-#Build stage 
+FROM node:20-alpine AS base
 
-FROM node:20-alpine AS build
+RUN apk add --no-cache libc6-compat
+
+FROM base AS deps
 
 WORKDIR /app
 
-COPY package.json package.json* ./
+COPY package.json package-lock.json* ./
 
-RUN npm ci && npm cache clean --force
+RUN npm ci
 
+FROM base AS builder
+
+WORKDIR /app
+
+ARG NEXT_PUBLIC_API_URL=http://localhost:5000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 RUN npm run build
 
-#Final stage 
+FROM base AS runner
 
-FROM nginx:1.27-alpine AS production
+WORKDIR /app
 
-RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+RUN addgroup -S appgroup \
+    && adduser -S appuser -G appgroup
 
-COPY --from=build /app/dist /user/share/nginx/html
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
+COPY --from=builder --chown=appuser:appgroup /app/.next/static ./.next/static
 
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/log/nginx && \
-    touch /var/run/nginx.pid && \
-    chown -R nginx:nginx /var/run/nginx.pid
+USER appuser
 
-USER nginx
+EXPOSE 3000
 
-EXPOSE 8080
-
-CMD [ "nginx","-g","daemon off;" ]
+CMD ["node", "server.js"]
