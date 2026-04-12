@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Installing npm
-        run: cd frontend/ && npm install
+        run: sudo apt install npm -y && cd frontend/ && npm install
 
       - name: Build app
         run: npm run build
