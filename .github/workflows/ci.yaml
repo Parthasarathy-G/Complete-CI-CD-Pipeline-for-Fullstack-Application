@@ -1,83 +1,17 @@
-name: CI/CD Pipeline
+name: Ci/Cd Pipeline
 
 on:
   push:
     branches:
-      - master
-      - development
+    - master
   pull_request:
     branches:
       - master
-      - development
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}
-
-permissions:
-  contents: read
-  packages: write
-  security-events: write
-  actions: read
 
 jobs:
-  # Secret scanning
-  secret-scan:
+  compile:
     runs-on: ubuntu-latest
-    name: Scan for secrets
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Run Trufflehog secret scanner
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
-
-  # Dependency vulnerability scanning
-  dependency-scan:
-    runs-on: ubuntu-latest
-    name: Dependency vulnerability scan
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run Trivy vulnerability scanner in fs mode
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() && github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Archive Trivy scan results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-fs-scan-results
-          path: trivy-results.sarif
-          retention-days: 30
-
-  # Frontend checks
-  frontend-check:
-    runs-on: ubuntu-latest
-    needs: [secret-scan, dependency-scan]
-    defaults:
-      run:
-        working-directory: frontend
 
     steps:
       - name: Checkout repository
@@ -88,125 +22,37 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+        
+      - name: Test
+        run: npm run test
 
-      - name: Run npm audit
-        run: npm audit --audit-level=high || true
-
-      - name: Lint the code
-        run: npm run lint
-
-      - name: Build the app
+      - name: Build app
         run: npm run build
-
-  # Backend checks
-  backend-check:
+  
+  security-check:
     runs-on: ubuntu-latest
-    needs: [secret-scan, dependency-scan]
-    defaults:
-      run:
-        working-directory: backend
-
-    steps:
+    needs: compile
+    steps:  
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Trivy installation
+        run: |
+              sudo apt-get install wget gnupg -y
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+              echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update -y
+              sudo apt-get install trivy -y 
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
+      - name: Trivy security check
+        run: trivy fs --format table -o trivy-security-report.json .
 
-      - name: Install dependencies
-        run: npm ci
 
-      - name: Run npm audit
-        run: npm audit --audit-level=high || true
+      - name: Gitleaks installation
+        run: sudo apt install gitleaks -y
 
-      - name: Lint the code
-        run: npm run lint
-        continue-on-error: true
+      - name: Gitleaks scan
+        run: gitleaks detect source . -r gitleaks-report.json -f json
 
-      - name: Build the app
-        run: npm run build
-        continue-on-error: true
-
-  # Docker build and security scan
-  docker-build-scan-push:
-    runs-on: ubuntu-latest
-    needs: [frontend-check, backend-check]
-    if: github.event_name == 'push'
-    strategy:
-      matrix:
-        service: [frontend, backend]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image (for scanning)
-        uses: docker/build-push-action@v5
-        with:
-          context: ./${{ matrix.service }}
-          push: false
-          load: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.sha }}'
-          format: 'sarif'
-          output: 'trivy-image-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
-
-      - name: Upload Trivy image scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() && github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        with:
-          sarif_file: 'trivy-image-results.sarif'
-          category: 'trivy-${{ matrix.service }}'
-
-      - name: Archive Trivy image scan results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-image-scan-results-${{ matrix.service }}
-          path: trivy-image-results.sarif
-          retention-days: 30
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./${{ matrix.service }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
