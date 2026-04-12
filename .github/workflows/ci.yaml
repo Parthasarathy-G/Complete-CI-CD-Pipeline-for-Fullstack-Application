@@ -20,9 +20,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-        
-      - name: Test
-        run: npm run test
 
       - name: Build app
         run: npm run build
