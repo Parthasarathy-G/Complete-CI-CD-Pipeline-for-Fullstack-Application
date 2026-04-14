@@ -1,172 +1,226 @@
-# 🚀 Complete CI/CD Pipeline for Fullstack Application
+# Healthcare Risk Management Platform
 
-This repository demonstrates a complete CI/CD pipeline for a fullstack application, including build, test, containerization, and deployment automation using modern DevOps practices.
+This repository contains a full-stack healthcare application with:
 
----
+- a `Next.js` frontend for doctors and patients
+- an `Express.js` backend with JWT authentication and MongoDB
+- a `FastAPI` risk prediction service for cardiovascular and diabetes assessment
+- a `Dockerfile` for containerizing the frontend
+- a `GitHub Actions` workflow for frontend build and security scanning
 
-## 📌 Overview
+This project was not built from scratch by the current maintainer. The main work added in this repository update is the CI workflow and the Docker setup around the existing application.
 
-This project covers:
+## Overview
 
-- Continuous Integration (CI)
-- Continuous Deployment (CD)
-- Docker-based containerization
-- Automated build & test workflows
-- Deployment pipeline setup
+The application is designed around a doctor and patient workflow:
 
----
+- doctors can register, log in, manage patients, update health data, and create appointments
+- patients can register, log in, and access patient-facing dashboard features
+- patient clinical data is sent to a Python prediction service to calculate cardio and diabetes risk
+- risk output is stored in MongoDB and surfaced back through the application
 
-## 🏗️ Pipeline Architecture
+## Architecture
 
+![Architecture Diagram](./assets/architecture.png)
+
+```text
+Next.js Frontend
+      |
+      v
+Express Backend  ----->  MongoDB
+      |
+      v
+FastAPI Risk Predictor
 ```
-Code Commit → CI Pipeline → Build → Test → Dockerize → Push Image → Deploy
-```
 
----
+## Key Features
 
-## 🛠️ Tech Stack
+- Doctor and patient authentication with JWT
+- Doctor dashboard with:
+  - assigned patient counts
+  - today's appointments
+  - high-risk patient tracking
+  - upcoming appointments
+- Patient management:
+  - add new patients
+  - update lab/profile data
+  - add medications
+  - recompute risk for existing patients
+- Appointment management for doctors
+- Upload support through `/uploads`
+- ML-backed prediction for:
+  - cardiovascular risk
+  - diabetes risk
+- Frontend Docker build using multi-stage Next.js standalone output
 
-### Application
-- Frontend: (Add your framework if available)
-- Backend: (Node.js / Spring Boot / etc.)
+## Tech Stack
 
-### DevOps
-- GitHub Actions (CI/CD)
-- Docker
+- Frontend: `Next.js 15`, `React 19`, `Axios`, `Framer Motion`
+- Backend: `Node.js`, `Express`, `MongoDB`, `Mongoose`, `JWT`, `Multer`
+- ML API: `FastAPI`, `Pydantic`, `NumPy`, `joblib`
+- DevOps: `Docker`, `GitHub Actions`, `Trivy`, `Gitleaks`
 
----
+## Repository Structure
 
-## ⚙️ CI/CD Workflow
-
-### 🔄 Continuous Integration
-- Code checkout
-- Dependency installation
-- Build process
-- Test execution
-
-### 🚀 Continuous Deployment
-- Docker image build
-- Image push (if configured)
-- Deployment to server/cloud
-
----
-
-## 📂 Repository Structure
-
-```
+```text
 .
-├── frontend/              # Frontend code (if available)
-├── backend/               # Backend code (if available)
-├── docker/                # Docker configs (if available)
-├── .github/workflows/     # CI/CD pipelines
-└── README.md
+├── frontend/                 # Next.js frontend
+├── backend/                  # Express API and MongoDB integration
+├── models-api/               # FastAPI risk prediction service and trained models
+├── .github/workflows/ci.yaml # CI pipeline
+├── Dockerfile                # Frontend production image
+└── .env.example              # Example environment values
 ```
 
----
+## Environment Variables
 
-## 🐳 Docker Usage
+Copy `.env.example` and replace the values with your own secrets and local endpoints.
 
-Build image:
+Example variables currently used by the project:
+
+```env
+BACKEND_PORT=5000
+FRONTEND_PORT=80
+MONGO_URL=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+JWT_EXPIRES_IN=1d
+RISK_PREDICTOR_URL=http://127.0.0.1:8000/api/patient/add
+NEXT_PUBLIC_API_URL=http://localhost:5000
+IMAGE_REGISTRY=ghcr.io/your-account
+IMAGE_TAG=latest
+```
+
+Notes:
+
+- `backend/server.js` requires `MONGO_URL` and `JWT_SECRET`
+- the frontend reads `NEXT_PUBLIC_API_URL` and appends `/api`
+- the backend calls the Python service using `RISK_PREDICTOR_URL`
+- the sample `.env.example` in the repo should be treated as placeholder configuration and updated before use
+
+## Local Development
+
+### 1. Frontend
 
 ```bash
-docker build -t app .
+cd frontend
+npm ci
+npm run dev
 ```
 
-Run container:
+Default dev server: `http://localhost:3000`
+
+### 2. Backend
 
 ```bash
-docker run -p 3000:3000 app
+cd backend
+npm ci
+npm run dev
 ```
 
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Git
-- Docker
-- Node.js (if applicable)
-
-### Setup
+If you want to run without `nodemon`:
 
 ```bash
-git clone https://github.com/Parthasarathy-G/Complete-CI-CD-Pipeline-for-Fullstack-Application.git
-cd Complete-CI-CD-Pipeline-for-Fullstack-Application
+node server.js
 ```
 
-Install dependencies:
+Default backend port: `5000`
+
+### 3. Risk Prediction API
+
+Create a Python environment, install dependencies, then start FastAPI:
 
 ```bash
-npm install
+cd models-api/src
+pip install -r requirements.txt
+uvicorn fastapi_app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Run application:
+Health endpoint:
 
 ```bash
-npm start
+GET http://127.0.0.1:8000/health
 ```
 
----
+## Docker
 
-## 🔄 GitHub Actions Example
+The root `Dockerfile` builds the `frontend` application only.
 
-```yaml
-name: CI/CD Pipeline
+Build:
 
-on:
-  push:
-    branches:
-      - master
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Run Tests
-        run: npm test
-
-      - name: Build Docker Image
-        run: docker build -t app .
-
-      - name: Deploy
-        run: echo "Add deployment steps here"
+```bash
+docker build -t healthcare-frontend .
 ```
 
----
+Run:
 
-## 📦 Deployment
+```bash
+docker run -p 3000:3000 healthcare-frontend
+```
 
-You can extend deployment using:
+What this image does:
 
-- AWS EC2 / ECS / EKS  
-- Azure / GCP  
-- VPS with Docker  
-- Kubernetes  
+- installs frontend dependencies
+- builds the Next.js app in standalone mode
+- runs the production server with `node server.js`
 
----
+## API Summary
 
-## 🤝 Contributing
+Main backend route groups:
 
-1. Fork the repo  
-2. Create a feature branch  
-3. Commit your changes  
-4. Open a Pull Request  
+- `/api/auth`
+  - doctor register/login
+  - patient register/login
+- `/api/dashboard`
+  - dashboard counts and doctor overview data
+- `/api/doctor`
+  - doctor-related endpoints
+- `/api/appointment`
+  - appointment creation and retrieval
+- `/api/availability`
+  - doctor availability management
+- `/api/patient`
+  - patient creation, updates, medication, and risk operations
 
----
+Main ML API endpoints:
 
-## 📜 License
+- `GET /health`
+- `POST /api/patient/add`
 
-MIT License
+## Machine Learning Service
 
----
+The Python service loads trained models from `models-api/models/`:
 
-## 👨‍💻 Author
+- `cardio_risk_rf.joblib`
+- `cardio_scaler.joblib`
+- `diabetes_rf.joblib`
+- `diabetes_scaler.joblib`
 
-Parthasarathy-G
+If model files are unavailable, the API falls back to heuristic risk scoring so the app can still respond.
+
+## CI/CD And Docker Work Added
+
+The repository includes [`.github/workflows/ci.yaml`](./.github/workflows/ci.yaml), which currently runs on pushes and pull requests to `master`.
+
+Current workflow steps:
+
+- build job
+  - checks out the repository
+  - sets up Node.js `20`
+  - installs frontend dependencies with `npm ci`
+  - builds the frontend app
+- security job
+  - runs a Trivy filesystem scan
+  - runs a Gitleaks scan
+
+The root [Dockerfile](./Dockerfile) was added to containerize the `frontend` application using a multi-stage Next.js standalone build.
+
+## Important Notes
+
+- this repository documents an existing healthcare application; the primary additions made here are the GitHub Actions workflow and Docker support
+- `backend/node_modules` is currently present in the repository; it is usually better to exclude dependencies from version control
+- the root Docker image does not currently containerize the backend or FastAPI service
+- the CI workflow currently validates the frontend only; backend tests and Python checks are not yet part of the pipeline
+
+## License
+
+This project is licensed under the `MIT` License. See [LICENSE](./LICENSE).
