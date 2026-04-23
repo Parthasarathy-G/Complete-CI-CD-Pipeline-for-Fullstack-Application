@@ -1,3 +1,6 @@
+<img width="100%" alt="Healthcare Risk Management Platform Banner" src="assets/banner.png" />
+
+
 # Healthcare Risk Management Platform
 
 This repository contains a full-stack healthcare application with:
